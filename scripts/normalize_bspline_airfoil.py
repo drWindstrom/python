@@ -6,7 +6,7 @@ import numpy as np
 from scipy import interpolate
 
 # Load airfoil from iges file
-iges_file = '../airfoils/airfoil_5500_rot.igs'
+iges_file = '../airfoils/airfoil_7000_rot.igs'
 tck = aft.load_airfoil_iges(iges_file)
 
 # Find leading and trailing edge points
