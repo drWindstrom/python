@@ -55,3 +55,12 @@ docs/_build/
 
 # PyBuilder
 target/
+
+# FLOWer
+flower/
+
+# Fluent
+fluent_airfoil/
+
+#Dolphin
+.directory
