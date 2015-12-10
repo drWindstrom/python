@@ -7,7 +7,6 @@ Created on Wed Jul  1 13:25:35 2015
 
 import numpy as np
 import re
-import matplotlib.pyplot as plt
 from scipy import interpolate
 
 
@@ -74,9 +73,9 @@ def curvature(dx, ddx, dy, ddy):
     """Returns the curvature of a curve.
 
     Args:
-        dx (array): first derivative of curve with repect to x
+        dx (array): first derivative of curve with respect to x
         ddx (array): second derivative of curve with respect to x
-        dy (array): first derivative of curve with repect to y
+        dy (array): first derivative of curve with respect to y
         ddy (array): second derivative of curve with respect to y
 
     Returns:
@@ -107,20 +106,18 @@ def curvature_points(x, y):
     return curvature(dx, ddx, dy, ddy)
 
 
-def curvature_iges(tck, res=1000):
-    """Calculate curvature of airfoil defined by a bspline.
+def curvature_bspline(tck, u):
+    """Calculate curvature of airfoil defined by a Bspline.
 
     Args:
         tck (tuple): A tuple (t,c,k) containing the vector of knots, the
             B-spline coefficients, and the degree of the spline.
-        res (int): How many discreet data point to use along the airfoil's
-            surface.
+        res (array): u coordinate of Bspline for which to return curvature
 
     Returns:
         array: curvature of the airfoil
 
     """
-    u = np.linspace(0.0, 1.0, res)
     grad1 = interpolate.splev(u, tck, der=1)
     grad2 = interpolate.splev(u, tck, der=2)
     dx = grad1[0]
@@ -131,14 +128,14 @@ def curvature_iges(tck, res=1000):
 
 
 def find_te_point(tck):
-    """Returns the trailing edge point of an airfoil defined by a bspline.
+    """Returns the trailing edge point of an airfoil defined by a Bspline.
 
     The trailing edge point is defined as the point half way between the
-    beginning and the end point of the bspline defining the surface of the
+    beginning and the end point of the Bspline defining the surface of the
     airfoil.
 
     Returns:
-        array: [x-coordinate, y-coorindate] of te_point
+        array: [x-coordinate, y-coordinate] of te_point
     """
     u0 = np.array(interpolate.splev(0.0, tck, der=0))
     u1 = np.array(interpolate.splev(1.0, tck, der=0))
@@ -161,7 +158,7 @@ def find_le_point(tck, te_point, tol=1.0e-8):
             below this tolerance level.
 
     Returns:
-        tuple: A tuple (u_le, le_point). u_le is the bspline coordinate that
+        tuple: A tuple (u_le, le_point). u_le is the Bspline coordinate that
         corresponds to the leading edge point le_point.
 
         """
@@ -171,7 +168,7 @@ def find_le_point(tck, te_point, tol=1.0e-8):
     res = 1000
     u = np.linspace(u0, u1, res)
     airfoil_points = np.array(interpolate.splev(u, tck, der=0))
-    # find greated distance between te_point and point on airfoil surface
+    # find greatest distance between te_point and point on airfoil surface
     dist_vec = airfoil_points.transpose() - te_point
     dist = np.linalg.norm(dist_vec, axis=1)
     max_pos = dist.argmax()
@@ -181,7 +178,7 @@ def find_le_point(tck, te_point, tol=1.0e-8):
         u_le_stor = u_le
         u = np.linspace(u[max_pos - 2], u[max_pos + 2], res)
         airfoil_points = np.array(interpolate.splev(u, tck, der=0))
-        # find greated distance between te_point and point on airfoil surface
+        # find greatest distance between te_point and point on airfoil surface
         dist_vec = airfoil_points.transpose() - te_point
         dist = np.linalg.norm(dist_vec, axis=1)
         max_pos = dist.argmax()
@@ -192,7 +189,7 @@ def find_le_point(tck, te_point, tol=1.0e-8):
 
 
 def translate_to_origin(tck, le_point):
-    """Translates the bspline of the airfoil so that le_point will be at the
+    """Translates the Bspline of the airfoil so that le_point will be at the
     origin of the coordinate system.
 
     Args:
@@ -208,7 +205,7 @@ def translate_to_origin(tck, le_point):
     vec_zero = np.array([0, 0])
     vec_le_zero = vec_zero - le_point
     bcoeffs = np.array([tck[1][0], tck[1][1]])
-    # Update bspline coefficients
+    # Update Bspline coefficients
     bcoeffs = bcoeffs.transpose() + vec_le_zero
     tck = [tck[0], [bcoeffs[:, 0], bcoeffs[:, 1]], tck[2]]
     return tck
@@ -221,14 +218,14 @@ def scale_airfoil(tck, le_point, te_point):
     dist_le_te = np.linalg.norm(vec_le_te)
     scale = 1.0/dist_le_te
     bcoeffs = np.array([tck[1][0], tck[1][1]])
-    # Update bspline coefficients
+    # Update Bspline coefficients
     bcoeffs = bcoeffs.transpose() * scale
     tck = [tck[0], [bcoeffs[:, 0], bcoeffs[:, 1]], tck[2]]
     return tck
 
 
 def rotate_airfoil(tck, le_point, te_point):
-    """Rotates the airfoil so that the choord of the airfoil will be on or
+    """Rotates the airfoil so that the chord of the airfoil will be on or
     parallel to the x-axis."""
 
     vec_x0 = [1.0, 0.0]
@@ -240,8 +237,58 @@ def rotate_airfoil(tck, le_point, te_point):
     rot_mat = np.array([[np.cos(alpha), -np.sin(alpha)],
                        [np.sin(alpha),  np.cos(alpha)]])
     bcoeffs = np.array([tck[1][0], tck[1][1]])
-    # Update bspline coefficients
+    # Update Bspline coefficients
     bcoeffs = rot_mat.dot(bcoeffs)
     bcoeffs = bcoeffs.transpose()
     tck = [tck[0], [bcoeffs[:, 0], bcoeffs[:, 1]], tck[2]]
     return tck
+
+
+def bspline_to_points(tck, min_step=1e-4, max_step=0.01):
+    """Discretizes the Bspline and returns the discrete points.
+
+    The step width is based on the curvature of the Bspline and on min_step
+    and max_step. The step width will be min_step at the point of maximum
+    curvature and will never be farther than max_step.
+
+    Args:
+        tck (tuple): A tuple (t,c,k) containing the vector of knots, the
+            B-spline coefficients, and the degree of the spline.
+        min_step (float): Minimum step width at point of maximum curvature
+        max_step (float): Maximum step width
+
+    Returns:
+        tuple: (num_points, points) The number of points num_points and an
+            array points with containing the discretized points.
+
+    """
+    u = 0.0
+    points = []
+    # Find maximum curvature
+    u_lin = np.linspace(0.0, 1.0, 10000)
+    max_curv = max(curvature_bspline(tck, u_lin))
+    # Get scale factor
+    scale = min_step * max_curv
+    # Step along Bspline
+    while u < 1.0:
+        points.append(interpolate.splev(u, tck, der=0))
+        step = 1.0 / abs(curvature_bspline(tck, u)) * scale
+        if step > max_step:
+            step = max_step
+        u += step
+    points.append(interpolate.splev(1.0, tck, der=0))
+    points = np.array(points)
+    num_points, _ = points.shape
+    return num_points, points
+
+
+def write_pointwise_seg(points, fname):
+    """Writes coordinates in points to fname in pointwise segment format."""
+
+    num_points, num_coordinates = points.shape
+    # If we only have x,y-coordinates append zeros for z
+    if num_coordinates == 2:
+        zeros = np.zeros((num_points, 1))
+        points = np.hstack((points, zeros))
+
+    np.savetxt(fname, points, header='{}'.format(num_points), comments='')
