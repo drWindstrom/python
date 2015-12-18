@@ -7,7 +7,7 @@ Created on Wed Jul  1 13:25:35 2015
 
 import numpy as np
 import re
-from scipy import interpolate
+from scipy import interpolate, optimize
 
 
 def load_airfoil_iges(iges_file):
@@ -292,3 +292,110 @@ def write_pointwise_seg(points, fname):
         points = np.hstack((points, zeros))
 
     np.savetxt(fname, points, header='{}'.format(num_points), comments='')
+
+
+def norm_bspline_airfoil(tck):
+    """Returns the normalized airfoil defined by tck.
+
+    Args:
+        tck (tuple): A tuple (t,c,k) containing the vector of knots, the
+            B-spline coefficients, and the degree of the spline.
+
+    Returns:
+        tuple: A tuple (t,c,k) containing the vector of knots, the B-spline
+            coefficients, and the degree of the spline.
+
+    """
+    # Find leading and trailing edge points
+    te_point = find_te_point(tck)
+    u_le, le_point = find_le_point(tck, te_point)
+    # Translate le_point to origin
+    tck = translate_to_origin(tck, le_point)
+    # Scale airfoil
+    tck = scale_airfoil(tck, le_point, te_point)
+    # Rotate airfoil
+    tck = rotate_airfoil(tck, le_point, te_point)
+    return tck
+
+
+def bspl_find_x(x_loc, start, end, tck):
+    """Returns the u coordinate of tck that corresponds to x.
+
+    Args:
+        x_loc (float): The x-location we want to know the corresponding
+            u-coordinate of the spline to
+        start (float): start of the interval we want to look in
+        end (float): end of the interval we want to look in
+        tck (tuple): A tuple (t,c,k) containing the vector of knots, the
+            B-spline coefficients, and the degree of the spline.
+
+    Returns:
+        float: The u coordinate that corresponds to x
+
+    Raises:
+        ValueError: If f(start) and f(end) do not have opposite signs or in
+            other words: If the x-location is not found in the given interval.
+
+    """
+    def f(x, tck):
+        points = interpolate.splev(x, tck, der=0)
+        return x_loc - points[0]
+    u = optimize.brentq(f=f, a=start, b=end, args=(tck,))
+    return u
+
+
+def correct_te(tck, s, k):
+    """Corrects the trailing edge of a flatback airfoil.
+
+    This corrections will make the trailing edge of the normalized flatback
+    airfoil align with the y-axis.
+
+    Args:
+        tck (tuple): A tuple (t,c,k) containing the vector of knots, the
+            B-spline coefficients, and the degree of the spline.
+        s (int): Controls the smoothing of the returned bspline
+        k (int): The degree of the returned bspline
+
+    Return:
+        tuple: A tuple (t,c,k) containing the vector of knots, the
+            B-spline coefficients, and the degree of the spline.
+
+    """
+    try:
+        u0_x = bspl_find_x(x_loc=1.0, start=0.0, end=0.1, tck=tck)
+    except ValueError:
+        u0_x = None
+    try:
+        u1_x = bspl_find_x(x_loc=1.0, start=0.9, end=1.0, tck=tck)
+    except ValueError:
+        u1_x = None
+
+    if u0_x is not None and u1_x is not None:
+        u = np.linspace(u0_x, u1_x, 1000)
+        points = interpolate.splev(u, tck, der=0)
+        tck_norm_mod = interpolate.splprep(points, s=s)
+    elif u0_x is None and u1_x is not None:
+        u = np.linspace(0.0, u1_x, 1000)
+        points = interpolate.splev(u, tck, der=0)
+        p_u0 = [points[0][0], points[1][0]]
+        u0_grad = interpolate.splev(0.0, tck, der=1)
+        dx = 1.0 - p_u0[0]
+        dy = dx * u0_grad[1] / u0_grad[0]
+        p_new = [1.0, p_u0[1] + dy]
+        x_pts = np.insert(points[0], 0, p_new[0])
+        y_pts = np.insert(points[1], 0, p_new[1])
+        tck_norm_mod, _ = interpolate.splprep([x_pts, y_pts], s=s, k=k)
+    elif u0_x is not None and u1_x is None:
+        u = np.linspace(u0_x, 1.0, 1000)
+        points = interpolate.splev(u, tck, der=0)
+        p_u1 = [points[0][-1], points[1][-1]]
+        u1_grad = interpolate.splev(1.0, tck, der=1)
+        dx = 1.0 - p_u1[0]
+        dy = dx * u1_grad[1] / u1_grad[0]
+        p_new = [1.0, p_u1[1] + dy]
+        x_pts = np.append(points[0], p_new[0])
+        y_pts = np.append(points[1], p_new[1])
+        tck_norm_mod, _ = interpolate.splprep([x_pts, y_pts], s=s, k=k)
+    else:
+        raise ValueError('Something is wrong with the bspline!')
+    return tck_norm_mod
