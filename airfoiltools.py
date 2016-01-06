@@ -221,7 +221,7 @@ def scale_airfoil(tck, le_point, te_point):
     # Update Bspline coefficients
     bcoeffs = bcoeffs.transpose() * scale
     tck = [tck[0], [bcoeffs[:, 0], bcoeffs[:, 1]], tck[2]]
-    return tck
+    return tck, dist_le_te
 
 
 def rotate_airfoil(tck, le_point, te_point):
@@ -233,6 +233,8 @@ def rotate_airfoil(tck, le_point, te_point):
     # angle of v2 relative to v1 = atan2(v2.y,v2.x) - atan2(v1.y,v1.x)
     alpha = np.arctan2(vec_x0[1], vec_x0[0]) - np.arctan2(vec_le_te[1],
                                                           vec_le_te[0])
+    rot_deg = alpha * 180.0 / np.pi
+
     # Get 2D rotation matrix
     rot_mat = np.array([[np.cos(alpha), -np.sin(alpha)],
                        [np.sin(alpha),  np.cos(alpha)]])
@@ -241,7 +243,7 @@ def rotate_airfoil(tck, le_point, te_point):
     bcoeffs = rot_mat.dot(bcoeffs)
     bcoeffs = bcoeffs.transpose()
     tck = [tck[0], [bcoeffs[:, 0], bcoeffs[:, 1]], tck[2]]
-    return tck
+    return tck, rot_deg
 
 
 def bspline_to_points(tck, min_step=1e-4, max_step=0.01):
@@ -312,10 +314,10 @@ def norm_bspline_airfoil(tck):
     # Translate le_point to origin
     tck = translate_to_origin(tck, le_point)
     # Scale airfoil
-    tck = scale_airfoil(tck, le_point, te_point)
+    tck, dist_le_te = scale_airfoil(tck, le_point, te_point)
     # Rotate airfoil
-    tck = rotate_airfoil(tck, le_point, te_point)
-    return tck
+    tck, rot_deg = rotate_airfoil(tck, le_point, te_point)
+    return tck, dist_le_te, rot_deg
 
 
 def bspl_find_x(x_loc, start, end, tck):
