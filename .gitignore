@@ -61,6 +61,7 @@ flower/
 
 # Fluent
 fluent_airfoil/
+fluent/
 
 #Dolphin
 .directory

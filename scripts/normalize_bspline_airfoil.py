@@ -7,11 +7,13 @@ import airfoiltools as aft
 import pickle
 
 
-inp_fname_igs = 'r22000.igs'
+inp_fname_igs = 'r8400.igs'
 
-inp_dir = '/mnt/hgfs/GAeroFerRo/Referenzblatt_3d/3D-Referenzblatt/E-44_V2/2D_Profile'
-out_dir_norm_bspline = '/mnt/hgfs/GAeroFerRo/Referenzblatt_3d/3D-Referenzblatt/E-44_V2/2D_Profile/bspline_norm'
-out_dir_norm_pointwise = '/mnt/hgfs/GAeroFerRo/Referenzblatt_3d/3D-Referenzblatt/E-44_V2/2D_Profile/pointwise_norm'
+inp_dir = ('/mnt/hgfs/GAeroFerRo/Referenzblatt_3d/E-44_V2/2D_Profile')
+out_dir_norm_bspline = ('/mnt/hgfs/GAeroFerRo/Referenzblatt_3d/'
+                        '3D-Referenzblatt/E-44_V2/2D_Profile/bspline_norm')
+out_dir_norm_pointwise = ('/mnt/hgfs/GAeroFerRo/Referenzblatt_3d/'
+                          '3D-Referenzblatt/E-44_V2/2D_Profile/pointwise_norm')
 
 # Load airfoil from iges file
 iges_file = os.path.join(inp_dir, inp_fname_igs)
@@ -21,7 +23,11 @@ tck_norm, dist_le_te, rot_deg = aft.norm_bspline_airfoil(tck)
 print('chord length: {}'.format(dist_le_te))
 print('twist: {}'.format(-rot_deg))
 
-tck_norm_mod = aft.correct_te(tck_norm, s=0.0000005, k=3)
+tck_norm_smooth = aft.smooth_bspline(tck_norm,
+                                     num_points=1000, s=0.00000005, k=5)
+
+
+tck_norm_mod = aft.correct_te(tck_norm_smooth, k=5)
 num_points, points = aft.bspline_to_points(tck_norm_mod, min_step=5e-4,
                                            max_step=0.01)
 print('num of points: {}'.format(num_points))
@@ -30,13 +36,13 @@ print('num of points: {}'.format(num_points))
 fname, _ = os.path.splitext(inp_fname_igs)
 
 # Save airfoil in pointwise format (segment points)
-pointwise_out = os.path.join(out_dir_norm_pointwise, fname + '_norm.dat')
-aft.write_pointwise_seg(points, pointwise_out)
+# pointwise_out = os.path.join(out_dir_norm_pointwise, fname + '_norm.dat')
+# aft.write_pointwise_seg(points, pointwise_out)
 
 # Save bspline definition of airfoil
-bspline_out = os.path.join(out_dir_norm_bspline, fname + '_bspline_norm.p')
-with open(bspline_out, 'wb') as f:
-    pickle.dump(tck_norm_mod, f)
+#bspline_out = os.path.join(out_dir_norm_bspline, fname + '_bspline_norm.p')
+#with open(bspline_out, 'wb') as f:
+#    pickle.dump(tck_norm_mod, f)
 
 te_point = aft.find_te_point(tck_norm_mod)
 u_le, le_point = aft.find_le_point(tck_norm_mod, te_point)

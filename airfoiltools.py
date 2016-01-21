@@ -346,7 +346,7 @@ def bspl_find_x(x_loc, start, end, tck):
     return u
 
 
-def correct_te(tck, s, k):
+def correct_te(tck, k):
     """Corrects the trailing edge of a flatback airfoil.
 
     This corrections will make the trailing edge of the normalized flatback
@@ -355,7 +355,6 @@ def correct_te(tck, s, k):
     Args:
         tck (tuple): A tuple (t,c,k) containing the vector of knots, the
             B-spline coefficients, and the degree of the spline.
-        s (int): Controls the smoothing of the returned bspline
         k (int): The degree of the returned bspline
 
     Return:
@@ -375,7 +374,7 @@ def correct_te(tck, s, k):
     if u0_x is not None and u1_x is not None:
         u = np.linspace(u0_x, u1_x, 1000)
         points = interpolate.splev(u, tck, der=0)
-        tck_norm_mod = interpolate.splprep(points, s=s)
+        tck_norm_mod = interpolate.splprep(points, s=0.0, k=k)
     elif u0_x is None and u1_x is not None:
         u = np.linspace(0.0, u1_x, 1000)
         points = interpolate.splev(u, tck, der=0)
@@ -386,7 +385,7 @@ def correct_te(tck, s, k):
         p_new = [1.0, p_u0[1] + dy]
         x_pts = np.insert(points[0], 0, p_new[0])
         y_pts = np.insert(points[1], 0, p_new[1])
-        tck_norm_mod, _ = interpolate.splprep([x_pts, y_pts], s=s, k=k)
+        tck_norm_mod, _ = interpolate.splprep([x_pts, y_pts], s=0.0, k=k)
     elif u0_x is not None and u1_x is None:
         u = np.linspace(u0_x, 1.0, 1000)
         points = interpolate.splev(u, tck, der=0)
@@ -397,7 +396,33 @@ def correct_te(tck, s, k):
         p_new = [1.0, p_u1[1] + dy]
         x_pts = np.append(points[0], p_new[0])
         y_pts = np.append(points[1], p_new[1])
-        tck_norm_mod, _ = interpolate.splprep([x_pts, y_pts], s=s, k=k)
+        tck_norm_mod, _ = interpolate.splprep([x_pts, y_pts], s=0.0, k=k)
     else:
         raise ValueError('Something is wrong with the bspline!')
     return tck_norm_mod
+
+
+def smooth_bspline(tck, num_points, s, k):
+    """Corrects the trailing edge of a flatback airfoil.
+
+    This corrections will make the trailing edge of the normalized flatback
+    airfoil align with the y-axis.
+
+    Args:
+        tck (tuple): A tuple (t,c,k) containing the vector of knots, the
+            B-spline coefficients, and the degree of the spline.
+        num_points (int): Number of points along the bspline curve used for
+            reconstruction
+        s (float): Smoothing of bspline
+        k (int): The degree of the returned bspline
+
+    Return:
+        tuple: A tuple (t,c,k) containing the vector of knots, the
+            B-spline coefficients, and the degree of the spline.
+
+    """
+    u = np.linspace(0.0, 1.0, num_points)
+    points = interpolate.splev(u, tck, der=0)
+    tck_smooth, _ = interpolate.splprep(points, s=s, k=k)
+    return tck_smooth
+
