@@ -11,6 +11,23 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
+def curvature(dx, ddx, dy, ddy):
+    """Returns the curvature of a curve.
+
+    Args:
+        dx (array): first derivative of curve with respect to x
+        ddx (array): second derivative of curve with respect to x
+        dy (array): first derivative of curve with respect to y
+        ddy (array): second derivative of curve with respect to y
+
+    Returns:
+        array: curvature of the curve
+
+    """
+    curvature = (dx*ddy - ddx*dy)/((dx**2 + dy**2)**(3.0/2.0))
+    return curvature
+
+
 class AirfGeom(object):
     """Class holds coordinates of the airfoil and modification functions."""
 
@@ -97,17 +114,85 @@ class AirfGeom(object):
         self.lpoints = np.loadtxt(points_file, comments=comments,
                                   delimiter=delimiter, skiprows=skiprows,
                                   usecols=usecols)
-        x = [self.loaded_points[:, 0], self.loaded_points[:, 1]]
+        x = [self.lpoints[:, 0], self.lpoints[:, 1]]
         self.tck, _ = interpolate.splprep(x, s=smoothing,
                                           k=degree)
 
-    def plot(self, num_samples=1000, line_format='-r'):
+    def get_curvature(self, u=None, nsamples=1000):
+        """Calculate curvature of the airfoil."""
+        if u is None:
+            u = np.linspace(0.0, 1.0, nsamples)
+        grad1 = interpolate.splev(u, self.tck, der=1)
+        grad2 = interpolate.splev(u, self.tck, der=2)
+        dx = grad1[0]
+        dy = grad1[1]
+        ddx = grad2[0]
+        ddy = grad2[1]
+        return curvature(dx, ddx, dy, ddy)
+
+    def get_dpoints(self, min_step=1e-4, max_step=0.01, nsamples=1000):
+        """Discretizes the Bspline and returns the discrete points.
+
+        The step width is based on the curvature of the Bspline and on min_step
+        and max_step. The step width will be min_step at the point of maximum
+        curvature and will never be farther than max_step.
+
+        Args:
+            min_step (float): Minimum step width at point of maximum curvature
+            max_step (float): Maximum step width
+
+        Returns:
+            tuple: (num_points, points) The number of points num_points and an
+                array points with containing the discretized points.
+
+        """
+        u = 0.0
+        points = []
+        # Find maximum curvature
+        max_curv = np.max(self.get_curvature(nsamples))
+        # Get scale factor
+        scale = min_step * max_curv
+        # Step along Bspline
+        while u < 1.0:
+            points.append(interpolate.splev(u, self.tck, der=0))
+            step = 1.0 / abs(self.get_curvature(u=u)) * scale
+            if step > max_step:
+                step = max_step
+            u += step
+        points.append(interpolate.splev(1.0, self.tck, der=0))
+        points = np.array(points)
+        num_points, _ = points.shape
+        return num_points, points
+
+    def plot(self, nsamples=1000, lformat='-r'):
         """bla."""
         # Plot airfoil
         plt.figure(self.airf_name)
-        u = np.linspace(0.0, 1.0, num_samples)
+        u = np.linspace(0.0, 1.0, nsamples)
         points = interpolate.splev(u, self.tck, der=0)
-        plt.plot(points[0], points[1], line_format, label=self.airf_name)
+        plt.plot(points[0], points[1], lformat, label=self.airf_name)
+        plt.axis('equal')
+        plt.grid()
+        plt.legend()
+        plt.show()
+
+    def plot_curvature(self, nsamples=1000, lformat='-r'):
+        """bla."""
+        curvature = self.get_curvature(nsamples)
+        plt.figure('Curvature of {}'.format(self.airf_name))
+        plt.plot(abs(curvature), lformat, )
+        plt.grid()
+        plt.show()
+
+    def plot_dpoints(self, min_step=1e-4, max_step=0.01, nsamples=1000,
+                     lformat='or'):
+        """bla."""
+        num_points, points = self.get_dpoints(min_step=min_step,
+                                              max_step=max_step,
+                                              nsamples=nsamples)
+
+        plt.figure('New point distribution for {}'.format(self.airf_name))
+        plt.plot(points[0], points[1], lformat, label=self.airf_name)
         plt.axis('equal')
         plt.grid()
         plt.legend()
