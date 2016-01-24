@@ -18,7 +18,7 @@ def curvature(dx, ddx, dy, ddy):
         dx (array): first derivative of curve with respect to x
         ddx (array): second derivative of curve with respect to x
         dy (array): first derivative of curve with respect to y
-        ddy (array): second derivative of curve with respect to y
+        ddy (array): second derivative of curve with respect to
 
     Returns:
         array: curvature of the curve
@@ -116,8 +116,14 @@ class AirfGeom(object):
                                   delimiter=delimiter, skiprows=skiprows,
                                   usecols=usecols)
         x = [self.lpoints[:, 0], self.lpoints[:, 1]]
-        self.tck, _ = interpolate.splprep(x, s=smoothing,
-                                          k=degree)
+        self.tck, _ = interpolate.splprep(x, s=smoothing, k=degree)
+
+    def reorient(self):
+        """Reorients the spline of the airfoil."""
+        points = self.get_epoints()
+        points = np.flipud(points)
+        self.tck, _ = interpolate.splprep([points[:, 0], points[:, 1]],
+                                          s=0.0, k=self.tck[2])
 
     def get_curvature(self, u=None, nsamples=None):
         """Calculate curvature of the airfoil."""
@@ -391,7 +397,7 @@ class AirfGeom(object):
         if u0_x is not None and u1_x is not None:
             u = np.linspace(u0_x, u1_x, 1000)
             points = interpolate.splev(u, self.tck, der=0)
-            self.tck = interpolate.splprep(points, s=0.0, k=k)
+            self.tck = interpolate.splprep(points, s=0.0, k=self.tck[2])
         elif u0_x is None and u1_x is not None:
             u = np.linspace(0.0, u1_x, 1000)
             points = interpolate.splev(u, self.tck, der=0)
@@ -402,7 +408,8 @@ class AirfGeom(object):
             p_new = [1.0, p_u0[1] + dy]
             x_pts = np.insert(points[0], 0, p_new[0])
             y_pts = np.insert(points[1], 0, p_new[1])
-            self.tck, _ = interpolate.splprep([x_pts, y_pts], s=0.0, k=k)
+            self.tck, _ = interpolate.splprep([x_pts, y_pts], s=0.0,
+                                              k=self.tck[2])
         elif u0_x is not None and u1_x is None:
             u = np.linspace(u0_x, 1.0, 1000)
             points = interpolate.splev(u, self.tck, der=0)
@@ -413,9 +420,32 @@ class AirfGeom(object):
             p_new = [1.0, p_u1[1] + dy]
             x_pts = np.append(points[0], p_new[0])
             y_pts = np.append(points[1], p_new[1])
-            self.tck, _ = interpolate.splprep([x_pts, y_pts], s=0.0, k=k)
+            self.tck, _ = interpolate.splprep([x_pts, y_pts], s=0.0,
+                                              k=self.tck[2])
         else:
             raise ValueError('Something is wrong with the bspline!')
+
+    def write_pointwise_seg(self, out_fname, min_step=1e-4, max_step=0.01,
+                            verbose=True):
+        """Writes a pointwise segment file cotaining the airfoil shape."""
+
+        points = self.get_dpoints(min_step=min_step, max_step=max_step)
+        num_points, num_coordinates = points.shape
+        if verbose:
+            print('Number of points to write: {}'.format(num_points))
+        # Append zeros for z
+        zeros = np.zeros((num_points, 1))
+        points = np.hstack((points, zeros))
+        np.savetxt(out_fname, points, header='{}'.format(num_points),
+                   comments='')
+
+    def smooth(self, smoothing, degree=None):
+        """Smooth the airfoil curve."""
+        points = self.get_epoints()
+        if degree is None:
+            degree = self.tck[2]
+        self.tck, _ = interpolate.splprep([points[:, 0], points[:, 1]],
+                                          s=smoothing, k=degree)
 
     def plot(self, lformat='-r'):
         """bla."""
