@@ -31,10 +31,11 @@ def curvature(dx, ddx, dy, ddy):
 class AirfGeom(object):
     """Class holds coordinates of the airfoil and modification functions."""
 
-    def __init__(self, tck=None, airf_name='airfoil'):
+    def __init__(self, tck=None, airf_name='airfoil', nsamples=10000):
         """Loads the airfoil."""
         self.tck = tck
         self.airf_name = airf_name
+        self.nsamples = nsamples
         self.lpoints = None
         self.lbspline = None
 
@@ -118,8 +119,10 @@ class AirfGeom(object):
         self.tck, _ = interpolate.splprep(x, s=smoothing,
                                           k=degree)
 
-    def get_curvature(self, u=None, nsamples=1000):
+    def get_curvature(self, u=None, nsamples=None):
         """Calculate curvature of the airfoil."""
+        if nsamples is None:
+            nsamples = self.nsamples
         if u is None:
             u = np.linspace(0.0, 1.0, nsamples)
         grad1 = interpolate.splev(u, self.tck, der=1)
@@ -130,7 +133,29 @@ class AirfGeom(object):
         ddy = grad2[1]
         return curvature(dx, ddx, dy, ddy)
 
-    def get_dpoints(self, min_step=1e-4, max_step=0.01, nsamples=1000):
+    def get_point(self, u):
+        """Return the point on the airfoil the corresponds to coordinate u.
+
+        Returns:
+            (np.array): [x-coordinate, y-coordinate]
+        """
+        return np.array(interpolate.splev(u, self.tck, der=0))
+
+    def get_epoints(self, u0=0.0, u1=1.0, nsamples=None):
+        """Returns nsamples equidistant points of the airfoil.
+
+        We can specify the interval where we want our points with u0 und u1.
+
+        Returns:
+            (np.array): nx2 where n = number of points. First column are x-
+                coordinates and second column are y-coordinates.
+        """
+        if nsamples is None:
+            nsamples = self.nsamples
+        u = np.linspace(u0, u1, nsamples)
+        return np.array(interpolate.splev(u, self.tck, der=0)).transpose()
+
+    def get_dpoints(self, min_step=1e-4, max_step=0.01):
         """Discretizes the Bspline and returns the discrete points.
 
         The step width is based on the curvature of the Bspline and on min_step
@@ -143,13 +168,14 @@ class AirfGeom(object):
 
         Returns:
             tuple: (num_points, points) The number of points num_points and an
-                array points with containing the discretized points.
+                np.array (nx2 where n = number of points) containing the
+                discretized points.
 
         """
         u = 0.0
         points = []
         # Find maximum curvature
-        max_curv = np.max(self.get_curvature(nsamples))
+        max_curv = max(abs(self.get_curvature()))
         # Get scale factor
         scale = min_step * max_curv
         # Step along Bspline
@@ -164,11 +190,238 @@ class AirfGeom(object):
         num_points, _ = points.shape
         return num_points, points
 
-    def plot(self, nsamples=1000, lformat='-r'):
+    def get_te_point(self):
+        """Returns the trailing edge point of an airfoil defined by a Bspline.
+
+        The trailing edge point is defined as the point half way between the
+        beginning and the end point of the Bspline defining the surface of the
+        airfoil.
+
+        Returns:
+            array: [x-coordinate, y-coordinate] of te_point
+        """
+        u0 = np.array(interpolate.splev(0.0, self.tck, der=0))
+        u1 = np.array(interpolate.splev(1.0, self.tck, der=0))
+        te_point = (u1 - u0)/2.0 + u0
+        return te_point
+
+    def get_le_point(self, te_point=None, nsamples=None, tol=1.0e-8):
+        """Finds the le_point along the airfoil curve.
+
+        The le_point is defined as the point along the curve of the airfoil
+        which has the greatest distance from the trailing edge point te_point.
+        If te_point is not given, we use self.get_te_point() to find it.
+
+        Args:
+            te_point (array): The x- and y-coordinate of the trailing edge
+                point. If not given, we use self.get_te_point()
+            tol (float): Tolerance level when to stop the iteration process.
+                The iteration stops one the change of u_le between iterations
+                falls below this tolerance level.
+
+        Returns:
+            tuple: A tuple (u_le, le_point). u_le is the Bspline coordinate
+            that corresponds to the leading edge point le_point and le_point
+            is an np.array [x-coordinate, y-coordinate].
+
+        """
+        if nsamples is None:
+            nsamples = self.nsamples
+        if te_point is None:
+            te_point = self.get_te_point()
+        u0 = 0.0
+        u1 = 1.0
+        u_le_stor = 0.0
+        u = np.linspace(u0, u1, nsamples)
+        airfoil_points = np.array(interpolate.splev(u, self.tck, der=0))
+        # find greatest distance between te_point and point on airfoil surface
+        dist_vec = airfoil_points.transpose() - te_point
+        dist = np.linalg.norm(dist_vec, axis=1)
+        max_pos = dist.argmax()
+        u_le = u[max_pos]
+        while abs(u_le - u_le_stor) > tol:
+            # store last u_le
+            u_le_stor = u_le
+            u = np.linspace(u[max_pos - 2], u[max_pos + 2], nsamples)
+            airfoil_points = np.array(interpolate.splev(u, self.tck, der=0))
+            # find greatest distance between te_point and point on airfoil
+            # surface
+            dist_vec = airfoil_points.transpose() - te_point
+            dist = np.linalg.norm(dist_vec, axis=1)
+            max_pos = dist.argmax()
+            u_le = u[max_pos]
+
+        # le_point = np.array(interpolate.splev(u_le, self.tck, der=0))
+        le_point = self.get_point(u=u_le)
+        return u_le, le_point
+
+    def te_to_origin(self, le_point=None, output=False):
+        """Translates the Bspline of the airfoil so that le_point will be at
+        the origin of the coordinate system.
+
+        Args:
+            le_point (array): This point will be at (0, 0) after translation.
+            If not given, we use self.get_le_point()
+
+        Returns:
+            tuple: A tuple (t,c,k) containing the vector of knots, the B-spline
+                coefficients, and the degree of the spline.
+
+        """
+        if le_point is None:
+            _, le_point = self.get_le_point()
+        vec_zero = np.array([0, 0])
+        vec_le_zero = vec_zero - le_point
+        bcoeffs = np.array([self.tck[1][0], self.tck[1][1]])
+        # Update Bspline coefficients
+        bcoeffs = bcoeffs.transpose() + vec_le_zero
+        self.tck = [self.tck[0], [bcoeffs[:, 0], bcoeffs[:, 1]], self.tck[2]]
+        if output:
+            return self.tck
+
+    def normalize_chord(self, le_point=None, te_point=None, output=None):
+        """Scales the airfoil so that the distance from le to te is 1.0."""
+
+        if le_point is None:
+            _, le_point = self.get_le_point()
+        if te_point is None:
+            te_point = self.get_te_point()
+        vec_le_te = te_point - le_point
+        dist_le_te_old = np.linalg.norm(vec_le_te)
+        scale = 1.0/dist_le_te_old
+        bcoeffs = np.array([self.tck[1][0], self.tck[1][1]])
+        # Update Bspline coefficients
+        bcoeffs = bcoeffs.transpose() * scale
+        self.tck = [self.tck[0], [bcoeffs[:, 0], bcoeffs[:, 1]], self.tck[2]]
+        if output:
+            return self.tck, dist_le_te_old
+
+    def derotate(self, le_point=None, te_point=None, output=None):
+        """Rotates the airfoil so that the chord of the airfoil will be on or
+        parallel to the x-axis."""
+
+        if le_point is None:
+            _, le_point = self.get_le_point()
+        if te_point is None:
+            te_point = self.get_te_point()
+        vec_x0 = [1.0, 0.0]
+        vec_le_te = te_point - le_point
+        # angle of v2 relative to v1 = atan2(v2.y,v2.x) - atan2(v1.y,v1.x)
+        alpha = np.arctan2(vec_x0[1], vec_x0[0]) - np.arctan2(vec_le_te[1],
+                                                              vec_le_te[0])
+        rot_deg = alpha * 180.0 / np.pi
+
+        # Get 2D rotation matrix
+        rot_mat = np.array([[np.cos(alpha), -np.sin(alpha)],
+                           [np.sin(alpha),  np.cos(alpha)]])
+        bcoeffs = np.array([self.tck[1][0], self.tck[1][1]])
+        # Update Bspline coefficients
+        bcoeffs = rot_mat.dot(bcoeffs)
+        bcoeffs = bcoeffs.transpose()
+        self.tck = [self.tck[0], [bcoeffs[:, 0], bcoeffs[:, 1]], self.tck[2]]
+        if output:
+            return self.tck, rot_deg
+
+    def normalize(self, output=None):
+        """Returns the normalized airfoil defined by tck.
+
+        Returns:
+            tuple: A tuple (t,c,k) containing the vector of knots, the B-spline
+                coefficients, and the degree of the spline.
+
+        """
+        # Translate le_point to origin
+        self.te_to_origin()
+        # Scale chord to 1
+        _, dist_le_te_old = self.normalize_chord(output=True)
+        # tck, dist_le_te = scale_airfoil(tck, le_point, te_point)
+        # Rotate
+        _, rot_deg = self.derotate(output=True)
+        # tck, rot_deg = rotate_airfoil(tck, le_point, te_point)
+        if output:
+            return self.tck, dist_le_te_old, rot_deg
+
+    def find_x(self, x_loc, u0, u1):
+        """Returns the u coordinate of tck that corresponds to x.
+
+        Args:
+            x_loc (float): The x-location we want to know the corresponding
+                u-coordinate of the spline to
+            start (float): start of the interval we want to look in
+            end (float): end of the interval we want to look in
+
+        Returns:
+            float: The u coordinate that corresponds to x
+
+        Raises:
+            ValueError: If f(start) and f(end) do not have opposite signs or in
+                other words: If the x-location is not found in the given
+                interval.
+
+        """
+        def f(x, tck):
+            points = interpolate.splev(x, tck, der=0)
+            return x_loc - points[0]
+        u = optimize.brentq(f=f, a=u0, b=u1, args=(self.tck,))
+        return u
+
+    def correct_te(self, k):
+        """Corrects the trailing edge of a flatback airfoil.
+
+        This corrections will make the trailing edge of the normalized flatback
+        airfoil align with the y-axis.
+
+        Args:
+            k (int): The degree of the returned bspline
+
+        Return:
+            tuple: A tuple (t,c,k) containing the vector of knots, the
+                B-spline coefficients, and the degree of the spline.
+
+        """
+        try:
+            u0_x = self.find_x(x_loc=1.0, u0=0.0, u1=0.1)
+        except ValueError:
+            u0_x = None
+        try:
+            u1_x = self.find_x(x_loc=1.0, u0=0.9, u1=1.0)
+        except ValueError:
+            u1_x = None
+
+        if u0_x is not None and u1_x is not None:
+            u = np.linspace(u0_x, u1_x, 1000)
+            points = interpolate.splev(u, self.tck, der=0)
+            self.tck = interpolate.splprep(points, s=0.0, k=k)
+        elif u0_x is None and u1_x is not None:
+            u = np.linspace(0.0, u1_x, 1000)
+            points = interpolate.splev(u, self.tck, der=0)
+            p_u0 = [points[0][0], points[1][0]]
+            u0_grad = interpolate.splev(0.0, self.tck, der=1)
+            dx = 1.0 - p_u0[0]
+            dy = dx * u0_grad[1] / u0_grad[0]
+            p_new = [1.0, p_u0[1] + dy]
+            x_pts = np.insert(points[0], 0, p_new[0])
+            y_pts = np.insert(points[1], 0, p_new[1])
+            self.tck, _ = interpolate.splprep([x_pts, y_pts], s=0.0, k=k)
+        elif u0_x is not None and u1_x is None:
+            u = np.linspace(u0_x, 1.0, 1000)
+            points = interpolate.splev(u, self.tck, der=0)
+            p_u1 = [points[0][-1], points[1][-1]]
+            u1_grad = interpolate.splev(1.0, self.tck, der=1)
+            dx = 1.0 - p_u1[0]
+            dy = dx * u1_grad[1] / u1_grad[0]
+            p_new = [1.0, p_u1[1] + dy]
+            x_pts = np.append(points[0], p_new[0])
+            y_pts = np.append(points[1], p_new[1])
+            self.tck, _ = interpolate.splprep([x_pts, y_pts], s=0.0, k=k)
+        else:
+            raise ValueError('Something is wrong with the bspline!')
+
+    def plot(self, lformat='-r'):
         """bla."""
         # Plot airfoil
         plt.figure(self.airf_name)
-        u = np.linspace(0.0, 1.0, nsamples)
+        u = np.linspace(0.0, 1.0, self.nsamples)
         points = interpolate.splev(u, self.tck, der=0)
         plt.plot(points[0], points[1], lformat, label=self.airf_name)
         plt.axis('equal')
@@ -176,23 +429,49 @@ class AirfGeom(object):
         plt.legend()
         plt.show()
 
-    def plot_curvature(self, nsamples=1000, lformat='-r'):
+    def plot_curvature(self, lformat='-r'):
         """bla."""
-        curvature = self.get_curvature(nsamples)
         plt.figure('Curvature of {}'.format(self.airf_name))
-        plt.plot(abs(curvature), lformat, )
+        plt.plot(abs(self.get_curvature()), lformat)
         plt.grid()
         plt.show()
 
-    def plot_dpoints(self, min_step=1e-4, max_step=0.01, nsamples=1000,
-                     lformat='or'):
+    def plot_dpoints(self, min_step=1e-4, max_step=0.01, lformat='or'):
         """bla."""
         num_points, points = self.get_dpoints(min_step=min_step,
-                                              max_step=max_step,
-                                              nsamples=nsamples)
-
+                                              max_step=max_step)
+        # Plot new point distribution
         plt.figure('New point distribution for {}'.format(self.airf_name))
-        plt.plot(points[0], points[1], lformat, label=self.airf_name)
+        plt.plot(points[:, 0], points[:, 1], lformat, label=self.airf_name)
+        plt.axis('equal')
+        plt.grid()
+        plt.legend()
+        plt.show()
+
+    def plot_le_te_points(self):
+        """bla."""
+        te_point = self.get_te_point()
+        u_le, le_point = self.get_le_point()
+        # Plot leading and trailing edge points
+        plt.figure('Leading and trailing edge of {}'.format(self.airf_name))
+        points = self.get_epoints()
+        plt.plot(points[:, 0], points[:, 1], label=self.airf_name)
+        plt.plot(te_point[0], te_point[1], 'or', label='te_point')
+        plt.plot(le_point[0], le_point[1], 'og', label='le_point')
+        plt.axis('equal')
+        plt.grid()
+        plt.legend()
+        plt.show()
+
+    def plot_ss_ps(self):
+        """bla."""
+        u_le, le_point = self.get_le_point()
+        pts_ss = self.get_epoints(u0=0.0, u1=u_le, nsamples=1000)
+        pts_ps = self.get_epoints(u0=u_le, u1=1.0, nsamples=1000)
+        # Plot pressure and suction side
+        plt.figure('Pressure and suction side for {}'.format(self.airf_name))
+        plt.plot(pts_ss[:, 0], pts_ss[:, 1], '-r', label='suction side')
+        plt.plot(pts_ps[:, 0], pts_ps[:, 1], '-b', label='pressure side')
         plt.axis('equal')
         plt.grid()
         plt.legend()
