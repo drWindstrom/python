@@ -5,10 +5,10 @@ Created on Wed Jul  1 13:25:35 2015
 @author: winstroth
 """
 import re
-import os
 from scipy import interpolate, optimize
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 
 
 def curvature(dx, ddx, dy, ddy):
@@ -31,13 +31,34 @@ def curvature(dx, ddx, dy, ddy):
 class AirfGeom(object):
     """Class holds coordinates of the airfoil and modification functions."""
 
-    def __init__(self, tck=None, airf_name='airfoil', nsamples=10000):
+    def __init__(self, airfcoords, airf_name='airfoil', nsamples=10000,
+                 comments='#', delimiter=None, skiprows=1, usecols=(0, 1),
+                 smoothing=0.0, degree=3):
         """Loads the airfoil."""
-        self.tck = tck
         self.airf_name = airf_name
         self.nsamples = nsamples
         self.lpoints = None
         self.lbspline = None
+        # Handle airfcoords by type
+        if type(airfcoords) is tuple:
+            self.tck = airfcoords
+            self.lbspline = airfcoords
+        elif type(airfcoords) is str:
+            _, fext = os.path.splitext(airfcoords)
+            if fext.lower() == '.txt' or fext.lower() == '.dat':
+                self.load_point_data(points_file=airfcoords, comments=comments,
+                                     delimiter=delimiter, skiprows=skiprows,
+                                     usecols=usecols, smoothing=smoothing,
+                                     degree=degree)
+            elif fext.lower() == '.iges' or fext.lower() == '.igs':
+                self.load_iges(iges_file=airfcoords)
+            else:
+                raise IOError('Wrong file type. Only the following extensions '
+                              'are support: *.txt, *.dat, *.igs or *.iges.')
+        else:
+            raise TypeError('The type of airfcoorfs must either be str or '
+                            'tuple but the supplied type is {}.'.format(
+                                type(airfcoords)))
 
     def load_iges(self, iges_file):
         """Loads the bspline of a 2D-Airfoil from an iges file.
@@ -138,6 +159,23 @@ class AirfGeom(object):
         ddx = grad2[0]
         ddy = grad2[1]
         return curvature(dx, ddx, dy, ddy)
+
+    def get_tan_vecs(self, nsamples):
+        """Returns nsamples equidistant tangent vectors along blade surface."""
+        u = np.linspace(0.0, 1.0, nsamples)
+        pvecs = interpolate.splev(u, self.tck, der=0)
+        pvecs = np.array([pvecs[0], pvecs[1]])
+        grad = interpolate.splev(u, self.tck, der=1)
+        tvecs = np.array([grad[0], grad[1]])
+        tnorms = np.linalg.norm(tvecs, axis=0)
+        tvecs = tvecs/tnorms
+        return tvecs, pvecs, u
+
+    def get_normal_vecs(self, nsamples):
+        """Returns nsamples equidistant normal vectors along blade surface."""
+        tvecs, pvecs, u = self.get_tan_vecs(nsamples=nsamples)
+        nvecs = np.array([tvecs[1, :], -tvecs[0, :]])
+        return nvecs, pvecs, u
 
     def get_point(self, u):
         """Return the point on the airfoil the corresponds to coordinate u.
@@ -261,7 +299,7 @@ class AirfGeom(object):
         le_point = self.get_point(u=u_le)
         return u_le, le_point
 
-    def te_to_origin(self, le_point=None, output=False):
+    def le_to_origin(self, le_point=None, output=False):
         """Translates the Bspline of the airfoil so that le_point will be at
         the origin of the coordinate system.
 
@@ -337,7 +375,7 @@ class AirfGeom(object):
 
         """
         # Translate le_point to origin
-        self.te_to_origin()
+        self.le_to_origin()
         # Scale chord to 1
         _, dist_le_te_old = self.normalize_chord(output=True)
         # tck, dist_le_te = scale_airfoil(tck, le_point, te_point)
@@ -368,6 +406,30 @@ class AirfGeom(object):
         def f(x, tck):
             points = interpolate.splev(x, tck, der=0)
             return x_loc - points[0]
+        u = optimize.brentq(f=f, a=u0, b=u1, args=(self.tck,))
+        return u
+
+    def find_y(self, y_loc, u0, u1):
+        """Returns the u coordinate of tck that corresponds to y.
+
+        Args:
+            y_loc (float): The y-location we want to know the corresponding
+                u-coordinate of the spline to
+            start (float): start of the interval we want to look in
+            end (float): end of the interval we want to look in
+
+        Returns:
+            float: The u coordinate that corresponds to y
+
+        Raises:
+            ValueError: If f(start) and f(end) do not have opposite signs or in
+                other words: If the y-location is not found in the given
+                interval.
+
+        """
+        def f(x, tck):
+            points = interpolate.splev(x, tck, der=0)
+            return y_loc - points[1]
         u = optimize.brentq(f=f, a=u0, b=u1, args=(self.tck,))
         return u
 
@@ -429,8 +491,8 @@ class AirfGeom(object):
                             verbose=True):
         """Writes a pointwise segment file cotaining the airfoil shape."""
 
-        points = self.get_dpoints(min_step=min_step, max_step=max_step)
-        num_points, num_coordinates = points.shape
+        num_points, points = self.get_dpoints(min_step=min_step,
+                                              max_step=max_step)
         if verbose:
             print('Number of points to write: {}'.format(num_points))
         # Append zeros for z
@@ -447,6 +509,12 @@ class AirfGeom(object):
         self.tck, _ = interpolate.splprep([points[:, 0], points[:, 1]],
                                           s=smoothing, k=degree)
 
+    def get_surface_len(self, nsamples=10000):
+        surf_pts = self.get_epoints(nsamples=nsamples).transpose()
+        pt_to_pt_vecs = surf_pts[:, 0:-1] - surf_pts[:, 1:]
+        pt_dist_vec = np.linalg.norm(pt_to_pt_vecs, axis=0)
+        return np.sum(pt_dist_vec)
+
     def plot(self, lformat='-r'):
         """bla."""
         # Plot airfoil
@@ -455,7 +523,7 @@ class AirfGeom(object):
         points = interpolate.splev(u, self.tck, der=0)
         plt.plot(points[0], points[1], lformat, label=self.airf_name)
         plt.axis('equal')
-        plt.grid()
+        plt.grid(True)
         plt.legend()
         plt.show()
 
@@ -463,7 +531,7 @@ class AirfGeom(object):
         """bla."""
         plt.figure('Curvature of {}'.format(self.airf_name))
         plt.plot(abs(self.get_curvature()), lformat)
-        plt.grid()
+        plt.grid(True)
         plt.show()
 
     def plot_dpoints(self, min_step=1e-4, max_step=0.01, lformat='or'):
@@ -474,7 +542,7 @@ class AirfGeom(object):
         plt.figure('New point distribution for {}'.format(self.airf_name))
         plt.plot(points[:, 0], points[:, 1], lformat, label=self.airf_name)
         plt.axis('equal')
-        plt.grid()
+        plt.grid(True)
         plt.legend()
         plt.show()
 
@@ -504,5 +572,57 @@ class AirfGeom(object):
         plt.plot(pts_ps[:, 0], pts_ps[:, 1], '-b', label='pressure side')
         plt.axis('equal')
         plt.grid()
+        plt.legend()
+        plt.show()
+
+    def plot_tvec(self, nsamples, vec_scal=0.01):
+        # Plot airfoil
+        plt.figure('Tangent vectors for {}.'.format(self.airf_name))
+        u = np.linspace(0.0, 1.0, 10000)
+        points = interpolate.splev(u, self.tck, der=0)
+        plt.plot(points[0], points[1], label=self.airf_name)
+        plt.axis('equal')
+        plt.grid(True)
+        # Get tangent vectors and point vectors
+        tvecs, pvecs = self.get_tan_vecs(nsamples=nsamples)
+        _, vec_len = tvecs.shape
+        for i in range(vec_len):
+            x = pvecs[0, i]
+            y = pvecs[1, i]
+            dirx = tvecs[0, i]
+            diry = tvecs[1, i]
+            lx = [x, x+dirx*vec_scal]
+            ly = [y, y+diry*vec_scal]
+            if i == 0:
+                plt.plot(lx, ly, '-ro', label='tangent vectors')
+            else:
+                plt.plot(lx, ly, '-ro')
+
+        plt.legend()
+        plt.show()
+
+    def plot_nvec(self, nsamples, vec_scal=0.01):
+        # Plot airfoil
+        plt.figure('Normal vectors for {}.'.format(self.airf_name))
+        u = np.linspace(0.0, 1.0, 10000)
+        points = interpolate.splev(u, self.tck, der=0)
+        plt.plot(points[0], points[1], label=self.airf_name)
+        plt.axis('equal')
+        plt.grid(True)
+        # Get normal vectors and point vectors
+        nvecs, pvecs = self.get_normal_vecs(nsamples=nsamples)
+        _, vec_len = nvecs.shape
+        for i in range(vec_len):
+            x = pvecs[0, i]
+            y = pvecs[1, i]
+            dirx = nvecs[0, i]
+            diry = nvecs[1, i]
+            lx = [x, x+dirx*vec_scal]
+            ly = [y, y+diry*vec_scal]
+            if i == 0:
+                plt.plot(lx, ly, '-ro', label='normal vectors')
+            else:
+                plt.plot(lx, ly, '-ro')
+
         plt.legend()
         plt.show()

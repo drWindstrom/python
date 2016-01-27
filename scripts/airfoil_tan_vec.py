@@ -13,19 +13,19 @@ import airfoiltools as aft
 
 num_vec = 150
 
-# # Load airfoil coordinates
-# airf_coord = np.loadtxt('../airfoils/du_91-w2-250.dat',
-#                         usecols=(0, 1), skiprows=1)
-# x = airf_coord[:, 0]
-# y = airf_coord[:, 1]
+# Load airfoil coordinates
+airf_coord = np.loadtxt('../airfoils/du_91-w2-250.dat',
+                        usecols=(0, 1), skiprows=1)
+x = airf_coord[:, 0]
+y = airf_coord[:, 1]
 
-# # Bspline interpolation
-# tcka, u = interpolate.splprep([x, y], s=0.0000000, k=3)
+# Bspline interpolation
+tcka, u = interpolate.splprep([x, y], s=0.0000000, k=3)
 # Load airfoil from iges file
-iges_file = '../airfoils/airfoil_7000_rot.igs'
-tck = aft.load_airfoil_iges(iges_file)
+#iges_file = '../airfoils/airfoil_7000_rot.igs'
+#tck = aft.load_airfoil_iges(iges_file)
 
-tcka = aft.norm_bspline_airfoil(tck)
+#tcka = aft.norm_bspline_airfoil(tck)
 uvec = np.linspace(0.0, 1.0, num_vec)
 u = np.linspace(0.0, 1.0, 1000)
 airf_coord = np.array(interpolate.splev(u, tcka, der=0))
