@@ -7,17 +7,17 @@ import modairfoil
 
 
 # User inputs
-write_files = True
+write_files = False
 # for sin wave modification
-u0 = 0.02
-u1 = 0.22
-ampl = 0.0005
+u0 = 0.2
+u1 = 0.4
+ampl = 0.005
 num_periods = 2.0
-trans_before = 0.4
-trans_mod_start = 0.4
+trans_before = 0.5
+trans_mod_start = 0.5
 trans_mod_end = 0.4
 trans_after = 0.4
-samples_p_period = 1000
+samples_p_period = 100
 s = 0.00000001
 k = 5
 # for input and output files
@@ -98,7 +98,7 @@ ax_airf = fig_airf.add_subplot(111)
 ax_airf.set_title('{} org. and mod.'.format(nairfoil))
 # remove all lines
 del ax_airf.lines[:]
-ax_airf.plot(org_pts[:, 0], org_pts[:, 1], '-b',label='org. airfoil')
+ax_airf.plot(org_pts[:, 0], org_pts[:, 1], '-b', label='org. airfoil')
 ax_airf.plot(mod_pts[:, 0], mod_pts[:, 1], '-r', label='mod. airfoil')
 ax_airf.axis('equal')
 ax_airf.set_xlim([-0.05, 1.05])
@@ -106,7 +106,7 @@ ax_airf.set_xlabel('x-coordinate')
 ax_airf.set_ylabel('y-coordinate')
 ax_airf.legend()
 ax_airf.grid(True)
-fig_curv.canvas.draw()
+fig_airf.canvas.draw()
 
 # Output pointwise segment file
 if write_files:

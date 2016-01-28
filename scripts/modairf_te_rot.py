@@ -16,13 +16,13 @@ k = 5
 ins_pt = np.array([0.0, 0.0])
 # for input and output files
 nairfoil = None
-fname_airfoil = 'e44r14100.dat'
+fname_airfoil = 'e44r19600.dat'
 inp_dir = ('/mnt/hgfs/GAeroFerRo/Referenzblatt_3d/E-44_V2/2D_Profile/'
            'pointwise_norm')
 out_dir = ('/mnt/hgfs/GAeroFerRo/Referenzblatt_3d/E-44_V2/'
            'profil_modifikationen/trailing_edge_rotation')
 # for point distribution of pointwise segment file
-min_step = 1.5e-4
+min_step = 1e-4
 max_step = 0.01
 
 
