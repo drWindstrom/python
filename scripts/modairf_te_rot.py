@@ -7,13 +7,13 @@ import modairfoil
 
 
 # User inputs
-write_files = False
+write_files = True
 # for sin wave modification
-alpha = 2.0
-te_smooth = 2.0
-s = 0.0000001
+alpha = 0.5
+te_smooth = 4.0
+s = 0.00000001
 k = 5
-ins_pt = None
+ins_pt = np.array([0.0, 0.0])
 # for input and output files
 nairfoil = None
 fname_airfoil = 'e44r14100.dat'
@@ -22,7 +22,7 @@ inp_dir = ('/mnt/hgfs/GAeroFerRo/Referenzblatt_3d/E-44_V2/2D_Profile/'
 out_dir = ('/mnt/hgfs/GAeroFerRo/Referenzblatt_3d/E-44_V2/'
            'profil_modifikationen/trailing_edge_rotation')
 # for point distribution of pointwise segment file
-min_step = 1e-4
+min_step = 1.5e-4
 max_step = 0.01
 
 
@@ -49,7 +49,7 @@ myfoil_mod = copy.deepcopy(myfoil_org)
 
 # Apply leading edge rotation
 myfoil_mod.rotate_te(alpha=alpha, nsamples=1000, te_smooth=te_smooth,
-                     smoothing=s, degree=k, ins_pt=ins_pt)
+                     smoothing=s, degree=k, ins_pt=ins_pt, plot=False)
 
 # Normalize airfoil after modification
 u_le = myfoil_mod.find_y(y_loc=0.0, u0=0.4, u1=0.6)
@@ -94,7 +94,7 @@ ax_airf.set_xlabel('x-coordinate')
 ax_airf.set_ylabel('y-coordinate')
 ax_airf.legend()
 ax_airf.grid(True)
-fig_curv.canvas.draw()
+fig_airf.canvas.draw()
 
 # Output pointwise segment file
 if write_files:

@@ -10,7 +10,7 @@ import modairfoil
 write_files = True
 # for sin wave modification
 alpha = 2.0
-te_smooth = 1.0
+le_smooth = 1.0
 s = 0.0
 k = 5
 # for input and output files
@@ -47,7 +47,7 @@ myfoil_org.correct_te(k=3)
 myfoil_mod = copy.deepcopy(myfoil_org)
 
 # Apply leading edge rotation
-myfoil_mod.rotate_le(alpha=alpha, nsamples=1000, te_smooth=te_smooth,
+myfoil_mod.rotate_le(alpha=alpha, nsamples=1000, le_smooth=le_smooth,
                      smoothing=s, degree=k)
 
 # Normalize airfoil after modification

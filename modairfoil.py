@@ -44,16 +44,16 @@ class ModAirfoil(afg.AirfGeom):
         points = points + rot_pt
         return points
 
-    def rotate_le(self, alpha, nsamples, te_smooth=1, smoothing=0.0, degree=5,
+    def rotate_le(self, alpha, nsamples, le_smooth=1, smoothing=0.0, degree=5,
                   ins_pt=None):
         """Splits the airfoil in two parts at the leading edge, rotates both
         parts by alpha/2.0 around the leading edge and than reconnects both
         parts again."""
         u_le, le_point = self.get_le_point()
-        te_smoothing = 1.0*te_smooth/100.0
+        le_smoothing = 1.0*le_smooth/100.0
         u0 = 0.0
-        u1 = u_le - te_smoothing
-        u2 = u_le + te_smoothing
+        u1 = u_le - le_smoothing
+        u2 = u_le + le_smoothing
         u3 = 1.0
         ss_pts = self._rotate_around_point(alpha=alpha/2.0, u0=u0, u1=u1,
                                            rot_pt=le_point, nsamples=nsamples)
@@ -68,7 +68,7 @@ class ModAirfoil(afg.AirfGeom):
         return ss_pts, ps_pts
 
     def rotate_te(self, alpha, nsamples, te_smooth=1, smoothing=0.0, degree=5,
-                  ins_pt=None):
+                  ins_pt=None, plot=False):
         """Splits the airfoil in two parts at the leading edge, rotates both
         parts by alpha/2.0 around the trailing edge and than reconnects both
         parts again."""
@@ -87,6 +87,13 @@ class ModAirfoil(afg.AirfGeom):
             new_pts = np.vstack((ss_pts, ps_pts))
         else:
             new_pts = np.vstack((ss_pts, ins_pt, ps_pts))
+        if plot:
+            plt.figure('Leading edge rotation')
+            plt.plot(new_pts[:, 0], new_pts[:, 1], 'or', label='fit points')
+            plt.axis('equal')
+            plt.grid(True)
+            plt.legend()
+            plt.show()
         x = [new_pts[:, 0], new_pts[:, 1]]
         self.tck, _ = interpolate.splprep(x, s=smoothing, k=degree)
         return ss_pts, ps_pts
